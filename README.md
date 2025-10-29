@@ -180,65 +180,68 @@ yarn android
 
 For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+---
+# Stock Predictor App
 
-```sh
-bundle install
+[![CI](https://github.com/bobbycahe/StockPredictorApp/actions/workflows/ci.yml/badge.svg)](https://github.com/bobbycahe/StockPredictorApp/actions)
+
+A compact React Native demo app that fetches historical daily stock prices and produces short-term projections. The app is intended for demos and resume use: it runs locally, does not require an API key, and is easy to build.
+
+## Quick highlights
+
+- Data source: Yahoo Finance JSON endpoints (no API key, no per-key/free-tier rate limits).
+- Prediction: in-app ridge-regression model with sensible fallbacks for short histories.
+- Logos: Clearbit Logo service with an avatar fallback.
+- Tooling: ESLint + Jest and a small GitHub Actions workflow for CI.
+
+## Screenshot
+
+Add a screenshot at `assets/demo-screenshot.png` and it will display here.
+
+![demo](assets/demo-screenshot.png)
+
+## Quick start (development)
+
+1. Install dependencies
+
+```powershell
+cd StockPreditorJawn
+npm install
 ```
 
-Then, and every time you update your native dependencies, run:
+2. Run on Android emulator / device
 
-```sh
-bundle exec pod install
+```powershell
+npx react-native run-android
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+3. Optional: produce an Android JS bundle for offline APK builds
 
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
+```powershell
+npm run bundle-android
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## Useful scripts
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+- `npm run android` — build & run on Android
+- `npm run ios` — build & run on iOS (macOS only)
+- `npm run bundle-android` — generate the JS bundle under `android/app/src/main/assets`
+- `npm run lint` — run ESLint
+- `npm test` — run Jest tests
 
-## Step 3: Modify your app
+## Notes about data & logos
 
-Now that you have successfully run the app, let's make changes!
+- Stock data: fetched from the Yahoo Finance `chart` API. No key required.
+- Logos: `makeLogoFor` attempts to guess a domain from the company name and fetch `https://logo.clearbit.com/<domain>`. If that fails, the app falls back to `ui-avatars.com`.
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+## CI
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+A minimal GitHub Actions workflow runs linting and tests on pushes and PRs to `main` (`.github/workflows/ci.yml`).
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+## License
 
-## Congratulations! :tada:
+MIT — see `LICENSE`.
 
-You've successfully run and modified your React Native App. :partying_face:
+---
 
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
-#   S t o c k P r e d i c t o r A p p 
- 
- 
+If you want, I can add a short demo GIF, CI badge to the README header, or a polished one-paragraph description for your resume.
