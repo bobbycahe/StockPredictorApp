@@ -1,0 +1,447 @@
+import React, { useState, useCallback } from 'react';
+import {
+  SafeAreaView,
+  StyleSheet,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  Platform,
+  StatusBar,
+  ScrollView,
+  Alert,
+} from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
+import Svg, { Rect, Text as SvgText } from 'react-native-svg';
+
+interface ChartPoint {
+  value: number;
+  x: number;
+  y: number;
+  index: number;
+}
+
+interface DecoratorProps {
+  x: number;
+  y: number;
+  index: number;
+  value: number | null;
+}
+
+function App(): React.ReactElement {
+  const [ticker, setTicker] = useState('');
+  const [result, setResult] = useState<{ nextPrice: number; currentPrice: number; projectionLine: number[]} | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<number[] | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [tooltipData, setTooltipData] = useState<{ value: number; x: number; y: number; visible: boolean }>({
+    value: 0,
+    x: 0,
+    y: 0,
+    visible: false
+  });
+
+  // Function to format the chart data for the LineChart component
+  const getChartData = (historicalData: number[] | null = data || null, projectionLine: number[] | null = result?.projectionLine || null) => {
+    if (!historicalData || !projectionLine) {
+      console.log('getChartData: No result, data, or projectionLine found.');
+      return {
+        labels: ['1', '5', '9', '13', '17', '21', '25'],
+        datasets: [
+          {
+            data: Array(7).fill(0),
+            strokeWidth: 2,
+          },
+          {
+            data: Array(7).fill(0),
+            strokeWidth: 2,
+          }
+        ],
+        legend: ['Historical', 'Projection']
+      };
+    }
+
+    // Create sparse datasets where they overlap
+    const historicalDataset = [
+      ...historicalData,
+      ...Array(5).fill(null)
+    ];
+    
+    const projectionDataset = [
+      ...Array(historicalData.length).fill(null),
+      historicalData[historicalData.length - 1],
+      ...projectionLine.slice(1)
+    ];
+
+    return {
+      labels: ['1', '5', '9', '13', '17', '21', '25'],
+      datasets: [
+        {
+          data: historicalDataset,
+          strokeWidth: 2,
+        },
+        {
+          data: projectionDataset,
+          strokeWidth: 2,
+        }
+      ],
+      legend: ['Historical', 'Projection']
+    };
+  };
+
+  const fetchStockData = async (symbol: string) => {
+    try {
+      const response = await fetch(
+        `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=\${symbol}&outputsize=compact&apikey=99BWTJU6SQULW4KL`
+      );
+      const data = await response.json();
+      console.log('Calling API:', `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=\${symbol}&outputsize=compact&apikey=99BWTJU6SQULW4KL`);
+      
+      if (data['Time Series (Daily)']) {
+        const timeSeriesData = data['Time Series (Daily)'];
+        const closePrices = Object.values(timeSeriesData)
+          .slice(0, 20)
+          .map((day: any) => parseFloat(day['4. close']))
+          .reverse();
+          
+        console.log('Found data for ' + symbol + ':', closePrices);
+        return closePrices;
+      }
+      throw new Error('Invalid API response structure');
+    } catch (err) {
+      console.error('Error fetching stock data:', err);
+      throw err;
+    }
+  };
+
+  const predict = (data: number[]): { nextPrice: number, projectionLine: number[] } => {
+    const lastPrice = data[data.length - 1];
+    const percentageChanges = [];
+    
+    // Calculate percentage changes between consecutive prices
+    for (let i = 1; i < data.length; i++) {
+      const change = ((data[i] - data[i - 1]) / data[i - 1]) * 100;
+      percentageChanges.push(change);
+    }
+    
+    // Calculate average percentage change
+    const avgPercentageChange = percentageChanges.reduce((a, b) => a + b, 0) / percentageChanges.length;
+    
+    // Project next 5 values
+    const projectionLine = [lastPrice];
+    for (let i = 0; i < 5; i++) {
+      const nextPrice = projectionLine[i] * (1 + avgPercentageChange / 100);
+      projectionLine.push(nextPrice);
+    }
+    
+    return {
+      nextPrice: projectionLine[projectionLine.length - 1],
+      projectionLine: projectionLine.slice(1) // Remove the first value as it's the last historical price
+    };
+  };
+
+  const handleStockPrediction = async (manualTicker?: string) => {
+    try {
+      setError(null);
+      
+      // If it's an event (from button or input), use the ticker state
+      const tickerToUse = manualTicker || ticker;
+      const upperTicker = tickerToUse.toUpperCase().trim();
+      
+      // Clear suggestions when submitting
+      setSuggestions([]);
+
+      if (!upperTicker) {
+        setError('Please enter a stock ticker.');
+        return;
+      }
+
+      console.log('Fetching prediction for:', upperTicker);
+      const stockData = await fetchStockData(upperTicker);
+      
+      if (!stockData || stockData.length === 0) {
+        setError('Could not fetch stock data. Please try again.');
+        return;
+      }
+
+      setData(stockData);
+      const prediction = predict(stockData);
+      console.log('Prediction result for ' + upperTicker + ':', {
+        nextPrice: prediction.nextPrice,
+        currentPrice: stockData[stockData.length - 1],
+        projectionLine: prediction.projectionLine
+      });
+
+      setResult({
+        nextPrice: prediction.nextPrice,
+        currentPrice: stockData[stockData.length - 1],
+        projectionLine: prediction.projectionLine
+      });
+      
+      console.log('Set result for ' + upperTicker);
+      console.log('Finished processing ' + upperTicker);
+
+    } catch (err: any) {
+      console.error('Error in handleStockPrediction:', err);
+      setError(err.message || 'An error occurred while fetching the stock data.');
+    }
+  };
+
+  // Format a number to 2 decimal places
+  const formatNumber = (num: number) => {
+    return num.toFixed(2);
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#090E34"
+        translucent
+      />
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.container}>
+          <Text style={styles.title}>Stock Predictor Pro</Text>
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.input}
+              value={ticker}
+              onChangeText={(text) => {
+                setTicker(text);
+                // Auto-suggest implementation would go here
+                if (text) {
+                  setSuggestions(['AAPL', 'GOOGL', 'MSFT', 'TSLA'].filter(s => s.startsWith(text.toUpperCase())));
+                } else {
+                  setSuggestions([]);
+                }
+              }}
+              placeholder="Enter stock ticker (e.g., AAPL)"
+              placeholderTextColor="#666"
+            />
+            {suggestions.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                {suggestions.map((suggestion) => (
+                  <TouchableOpacity
+                    key={suggestion}
+                    style={styles.suggestionItem}
+                    onPress={() => {
+                      setTicker(suggestion);
+                      setSuggestions([]);
+                      handleStockPrediction(suggestion);
+                    }}
+                  >
+                    <Text style={styles.suggestionText}>{suggestion}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => handleStockPrediction()}
+            >
+              <Text style={styles.buttonText}>Predict</Text>
+            </TouchableOpacity>
+          </View>
+
+          {error ? (
+            <View style={styles.resultContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : data && result ? (
+            <View style={styles.resultContainer}>
+              <Text style={styles.resultText}>
+                Current Price: ${formatNumber(result.currentPrice)}
+              </Text>
+              <Text style={styles.resultText}>
+                Predicted Price: ${formatNumber(result.nextPrice)}
+              </Text>
+              <Text style={styles.resultText}>
+                {result.nextPrice > result.currentPrice ? '📈' : '📉'} Predicted Change:{' '}
+                {formatNumber(((result.nextPrice - result.currentPrice) / result.currentPrice) * 100)}%
+              </Text>
+              
+              <View style={styles.chartContainer}>
+                <LineChart
+                  data={getChartData()}
+                  width={Platform.OS === 'web' ? 600 : 350}
+                  height={220}
+                  chartConfig={{
+                    backgroundColor: '#1a2451',
+                    backgroundGradientFrom: '#1a2451',
+                    backgroundGradientTo: '#1a2451',
+                    decimalPlaces: 2,
+                    color: (opacity = 1) => `rgba(255, 255, 255, \${opacity})`,
+                    style: {
+                      borderRadius: 16,
+                    },
+                  }}
+                  bezier
+                  style={{
+                    marginVertical: 8,
+                    borderRadius: 16,
+                  }}
+                  onDataPointClick={({ value, x, y }: ChartPoint) => {
+                    setTooltipData({
+                      value,
+                      x,
+                      y,
+                      visible: true
+                    });
+                  }}
+                  getDotColor={(dataPoint, dataPointIndex) => {
+                    return dataPoint === null ? 'transparent' : '#FFFFFF';
+                  }}
+                  decorator={({ x, y, index, value }: DecoratorProps) => {
+                    if (value === null) return null;
+                    return (
+                      <View
+                        key={index}
+                        style={{
+                          position: 'absolute',
+                          left: x - 3,
+                          top: y - 3,
+                          width: 6,
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor: '#FFFFFF',
+                        }}
+                      />
+                    );
+                  }}
+                />
+                {tooltipData.visible && (
+                  <View
+                    style={[
+                      styles.tooltip,
+                      {
+                        left: tooltipData.x - 40,
+                        top: tooltipData.y - 40,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.tooltipText}>
+                      ${formatNumber(tooltipData.value)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#090E34',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  container: {
+    flex: 1,
+    padding: 20,
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 30,
+    textAlign: 'center',
+  },
+  searchContainer: {
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  input: {
+    width: '100%',
+    height: 50,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 25,
+    paddingHorizontal: 20,
+    fontSize: 16,
+    marginBottom: 15,
+    color: '#000000',
+  },
+  button: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  resultContainer: {
+    marginTop: 30,
+    padding: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  resultText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  chartContainer: {
+    marginTop: 20,
+    alignItems: 'center',
+    width: '100%',
+  },
+  tooltip: {
+    position: 'absolute',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 10,
+    borderRadius: 5,
+  },
+  tooltipText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+  },
+  suggestionsContainer: {
+    position: 'absolute',
+    top: 50, // Position below input
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    zIndex: 1000,
+    elevation: 5, // For Android
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  suggestionItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
+  },
+  suggestionText: {
+    color: '#000000',
+    fontSize: 16,
+  },
+});
+
+export default App;
